@@ -16,7 +16,7 @@ module Confine
 		def createSlice
 			result = Hash.new
 			result['sliceid'] = @sliceId += 1
-			result['testbed'] = "#{DOMAIN_PREFIX}#{result['sliceid']}"
+			result['domain'] = "#{DOMAIN_PREFIX}#{result['sliceid']}"
 			result
 		end
 
@@ -30,7 +30,7 @@ module Confine
 			sliver['node']['control_ip'] = "10.0.0.#{@sliceSliverId[sliceid]}"
 			sliver['node']['control_mac'] = '00:03:2D:08:1A:88'
 			sliver['node']['hostname'] = "#{hostname}"
-			sliver['node']['hrn'] = "#{DOMAIN_PREFIX}#{sliceid}.#{hostname}"
+			sliver['node']['domain'] = "#{DOMAIN_PREFIX}#{sliceid}"
 			sliver['location']['x'] = '0'
 			sliver['location']['y'] = "#{@sliceSliverId[sliceid]}"
 			sliver['location']['z'] = '0'

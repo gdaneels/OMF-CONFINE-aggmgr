@@ -2,7 +2,6 @@ require 'omf-aggmgr/ogs/gridService'
 require 'omf-aggmgr/ogs_confine/confinePortal'
 require 'omf-aggmgr/ogs_inventory/mySQLInventory'
 require 'omf-aggmgr/ogs_inventory/inventory'
-require 'omf-aggmgr/ogs_sliceManager/sliceManager'
 
 class ConfineService < GridService
 
@@ -13,8 +12,13 @@ class ConfineService < GridService
   @@config = nil
   @@portal = nil
   @@slicemgr = nil
+  @@domain = nil
+  @@service = nil
 
+  ROOT = "OMF_#{OMF::Common::MM_VERSION()}"
   PUBSUB_DOMAIN = 'omf-am.local'
+  PUBSUB_USER = 'aggmgr'
+  PUBSUB_PASS = '123'
 
   def self.getPortal
    # Just reuse it if it already exist
@@ -66,6 +70,35 @@ class ConfineService < GridService
     	end
   end
 
+  def self.servicePubSub
+  if @@service.nil?
+    begin
+      @@service = OmfXMPPServices.new(PUBSUB_USER, PUBSUB_PASS, PUBSUB_DOMAIN)
+      @@service.add_service(PUBSUB_DOMAIN)
+      puts "Connected to PubSub Server!"
+    rescue Exception => ex
+      puts "ERROR Creating ServiceHelper - '#{ex}'"
+    end
+  end
+  @@service
+  end
+
+  def self.mkPubSubNode(node)
+    servicePubSub.create_node(node.to_s, PUBSUB_DOMAIN)
+  end
+
+  def self.slice_node(slice)
+    "/#{ROOT}/#{slice}"
+  end
+
+  def self.resources_node(slice)
+    "#{self.slice_node(slice)}/resources"
+  end
+
+  def self.resource_node(slice, hrn)
+    "#{self.resources_node(slice)}/#{hrn}"
+  end
+
   #
   # Implements allocating a slice at the CONFINE testbed
   #
@@ -73,14 +106,15 @@ class ConfineService < GridService
   service 'allocateSlice' do
 	result = getPortal.createSlice
 	doDB do |inv|
-		resultTestbed = inv.addTestbed(result['testbed'])
+		resultTestbed = inv.addTestbed(result['domain'])
 	end
 
-	# SliceManagerService.createSlice(result['testbed'],PUBSUB_DOMAIN)
+	self.mkPubSubNode(self.slice_node(result['domain']))
+        self.mkPubSubNode(self.resources_node(result['domain']))
 
 	replyXML = InventoryService.buildXMLReply("SLICE", result, "Failed to allocate a new slice.") { |root,result|
       		InventoryService.addXMLElement(root, "SLICE_ID", "#{result['sliceid']}")
-		InventoryService.addXMLElement(root, "DOMAIN", "#{result['testbed']}")
+		InventoryService.addXMLElement(root, "DOMAIN", "#{result['domain']}")
     	}
     	replyXML
   end
@@ -149,17 +183,17 @@ class ConfineService < GridService
 				location_result = inv.addLocation(makeDBLocation(slivers[i]['location']))
 				node_result = inv.addNode(makeDBNode(slivers[i]))
 				sliverXML[i] = slivers[i]['node']
+				self.mkPubSubNode(self.resource_node(slivers[i]['node']['domain'],
+								slivers[i]['node']['hostname']))
 			end
     		end
-
-		# SliceManagerService.associateResourcesToSlice('experiment.#{sliceid}', names_str, PUBSUB_DOMAIN)
 
 		# SUCCESSFULL
 		replyXML = InventoryService.buildXMLReply("SLIVERGROUP", sliverXML, "Failed to allocate a new slivers.") { |root,sliverXML|
 			sliverXML.each { |sliverx|
 				sliverElem = root.add_element("SLIVER")
 				InventoryService.addXMLElement(sliverElem, "HOSTNAME", "#{sliverx['hostname']}")
-				InventoryService.addXMLElement(sliverElem, "HRN", "#{sliverx['hrn']}")
+				InventoryService.addXMLElement(sliverElem, "DOMAIN", "#{sliverx['domain']}")
       				InventoryService.addXMLElement(sliverElem, "CONTROL_IP", "#{sliverx['control_ip']}")
 				InventoryService.addXMLElement(sliverElem, "CONTROL_MAC", "#{sliverx['control_mac']}")
 			}
